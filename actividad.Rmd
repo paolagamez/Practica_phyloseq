@@ -1,0 +1,426 @@
+---
+title: "🔬 El Caso del microbioma misterioso"
+subtitle: "Análisis crítico con phyloseq — atlas1006"
+author: "Paola Martínez Gámez"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 5)
+```
+
+---
+
+> **Nota para el/la/ estudiantx:** Este documento es tu bitácora de investigación.
+> Cada `# TU CÓDIGO AQUÍ` 
+y `# TU RESPUESTA:` es una espacio de trabajo.
+> No dejes ninguna en blanco. El razonamiento vale más que el resultado.
+
+---
+
+# Carga de paquetes
+
+```{r paquetes}
+library(phyloseq)
+library(microbiome)
+library(ggplot2)
+library(vegan)
+library(dplyr)
+```
+
+---
+
+# PARTE 1 — Exploración crítica del objeto phyloseq (10 min)
+
+*El estudiante anterior sólo cargó los datos y no documentó nada. Empieza desde cero.*
+
+## 1.1 Carga e inspección inicial
+
+```{r carga-datos}
+data("atlas1006")
+
+# Imprime el objeto. Observa cada componente listado.
+atlas1006
+```
+
+**Pregunta 1.1** — Responde en el espacio de abajo SIN buscar documentación externa.
+Solo con lo que ves en el output anterior:
+
+> **¿Cuántos taxa, cuántas muestras y cuántas variables de muestra contiene este objeto?
+> ¿Qué componentes del objeto phyloseq estándar están PRESENTES y cuáles AUSENTES?**
+
+```
+Taxa: 130
+Muestras: 1,151
+Variables de muestra: 10
+Componentes presentes: Tabla de OTUs, datos de muestra y tabla taxonomica.
+Componentes ausentes: Arbol filogenético y secuencias de referencia.
+
+```
+
+## 1.2 La trampa del árbol filogenético
+
+El estudiante anterior dejó este comentario en el código:
+
+```
+# TODO: calcular distancias UniFrac para el análisis de diversidad beta
+```
+
+```{r trampa-unifrac, eval=TRUE}
+# ¿Qué sucede si ejecutas este código? Pruébalo (cambia eval=FALSE a eval=TRUE).
+# ANTES de ejecutarlo, escribe tu predicción abajo.
+distancias_unifrac <- distance(atlas1006, method = "unifrac")
+```
+
+**Pregunta 1.2a** — ANTES de correr el chunk (con eval=TRUE):
+
+> **Predice: ¿funcionará este código? ¿Por qué sí o por qué no?
+> Conecta tu respuesta con lo que observaste en 1.1.**
+
+```
+No va a correr, para calcular distancias UniFrac se necesita de un arbol filogenetico y nuestro objeto solo tiene otu_table, sample_data y tax_table, el phy_tree esta ausente.
+
+```
+
+**Pregunta 1.2b** — DESPUÉS de correr el chunk:
+
+> **¿Qué error obtuviste? ¿Cómo lo interpretarías a un colaborador que no conoce phyloseq?
+> Propón UNA alternativa de distancia que sí funcione con este objeto y justifica tu elección.**
+
+```
+No corrio y salio este error "stop(slot, " slot is empty.")", esto nos dice que donde deberia de estar el arbol filogenetico en el objeto phyloseq esta vacio por lo que no puede calcular las distancias. En su lugar podeis calcular la distancia bray-curtis ya que esta solo necesita la tabla de OTUs.
+
+```
+
+## 1.3 Explorando la metadata
+
+```{r exploracion-metadata}
+# Extrae y visualiza las variables de muestra
+head(sample_data(atlas1006))
+```
+
+```{r conteo-grupos}
+# Cuenta cuántas muestras hay por grupo de IMC (bmi_group)
+# TU CÓDIGO AQUÍ (una línea es suficiente):
+table(sample_data(atlas1006)$bmi_group)
+
+```
+
+**Pregunta 1.3** — Observa la distribución de muestras por `bmi_group`:
+
+> **¿Están los grupos balanceados? ¿Qué implicaciones tiene el desbalance (si existe)
+> para comparaciones estadísticas posteriores?**
+
+```
+No, no estan abalnceados. Esto ocasiona que los grupos peqieños como underweight o morbidobese no alcancen sigmnificancia estadistica simplemente porque el tamaño de la muestra es mucho mas pequeño que el grupo control, cambios importantes pasan desapercibidos; también un outlier puede sesgar el promedio de todo el grupo, mientras que en una muestra mas grande no seria notable.
+
+
+```
+
+---
+
+# PARTE 2 — Laboratorio de errores: arregla el código roto (15 min)
+
+*El estudiante anterior dejó 3 bloques de código con errores sutiles.
+Cada error afecta la interpretación biológica. Tu trabajo: encontrar, corregir y EXPLICAR.*
+
+## 2.1 Error en el filtrado de taxa
+
+```{r error-1-original, eval=FALSE}
+# CÓDIGO DEL ESTUDIANTE ANTERIOR — No cambies este chunk
+# Objetivo declarado: "remover taxa que aparecen en menos del 10% de las muestras"
+
+ps_filtrado <- filter_taxa(atlas1006,
+                           function(x) sum(x > 0) > (0.1 * length(x)),
+                           prune = FALSE)   # <-- ¿Notas algo raro aquí?
+ntaxa(ps_filtrado)
+```
+
+**Pregunta 2.1** — Identifica los DOS problemas en este código:
+
+> **Problema 1 (lógico):** ¿El argumento `prune = FALSE` hace lo que el estudiante quería?
+> ¿Qué debería ser y por qué?
+>
+> **Problema 2 (de criterio):** ¿El umbral del 10% de prevalencia es razonable para
+> este dataset de 1,151 muestras? Argumenta con números concretos.
+
+```
+1) No, el argumento prune determina si la función debe devolver el objeto phyloseq recortado o un vector logico con TRUE y FALSE. En este caso `prune = FALSE` devuelve un vector logico, deberia de ser `prune = TRUE` para tener como resultado de la función el objeto phyloseq recortado
+
+2) El umbral del 10% de prevalencia significa que un taxon debe aparecer en al menos 115 muestras para ser conservado, es muy estricto y podria ocasionar perdida de información especifica degrupos con pocas muestras 
+
+```
+
+```{r error-1-corregido}
+# Ahora escribe la versión CORREGIDA del código:
+# TU CÓDIGO AQUÍ:
+ps_filtrado1 <- filter_taxa(atlas1006,
+                           function(x) sum(x > 0) > (0.1 * length(x)),
+                           prune = TRUE)   # <-- ¿Notas algo raro aquí?
+ntaxa(ps_filtrado1)
+ntaxa(atlas1006)
+# Imprime cuántos taxa quedan y compara con ntaxa(atlas1006)
+```
+
+## 2.2 Error en la transformación de datos
+
+```{r error-2-original, eval=FALSE}
+# CÓDIGO DEL ESTUDIANTE ANTERIOR — No cambies este chunk
+# Objetivo declarado: "calcular diversidad alfa con datos crudos, luego transformar para beta"
+
+# Paso 1: Transformar a abundancias relativas
+ps_rel <- microbiome::transform(atlas1006, "compositional")
+
+# Paso 2: Calcular diversidad alfa (Shannon)
+alpha_div <- estimate_richness(ps_rel, measures = "Shannon")
+head(alpha_div)
+```
+
+**Pregunta 2.2:**
+
+> **¿Cuál es el problema conceptual de calcular diversidad alfa con abundancias relativas
+> en lugar de conteos crudos? ¿Afecta el índice de Shannon de la misma manera que
+> afectaría al índice de Chao1? Explica la diferencia.**
+
+```
+Los indices de diversidad alfa se calculan con conteos crudos, si lo hacemos con abundancias relativas perdemos información sobre el esfuerzo de secuenciación y los indices ya no son utiles. No afecta igual a shannon que a Chao1, est eultimo s ebasa en el conteo de singletons
+
+
+```
+
+```{r error-2-corregido}
+# Escribe la versión correcta (diversidad alfa con el objeto apropiado):
+# TU CÓDIGO AQUÍ:
+
+
+```
+
+## 2.3 Error en la visualización de composición
+
+```{r error-3-original, eval=FALSE}
+# CÓDIGO DEL ESTUDIANTE ANTERIOR — No cambies este chunk
+# Objetivo: comparar composición por nivel de IMC (bmi_group)
+
+ps_phylum <- tax_glom(atlas1006, "Phylum")
+plot_bar(ps_phylum, x = "Sample", fill = "Phylum") +
+  facet_wrap(~bmi_group, scales = "free_x")
+```
+
+**Pregunta 2.3:**
+
+> **Este código produce una figura, pero tiene un problema grave para la comparación
+> entre grupos. ¿Cuál es? (Pista: piensa en qué se está graficando en el eje Y).
+> Propón y ejecuta una solución.**
+
+```
+# TU RESPUESTA:
+
+
+```
+
+```{r error-3-corregido}
+# Tu versión corregida:
+# TU CÓDIGO AQUÍ:
+
+
+```
+
+---
+
+# PARTE 3 — Análisis con decisiones justificadas (20 min)
+
+*Aquí no hay "respuesta correcta". Se evalúa que justifiques cada elección.*
+
+## 3.1 Diversidad alfa: elige tu índice
+
+```{r alpha-exploracion}
+# Primero, visualiza TODOS los índices disponibles para tener contexto
+alpha_todas <- estimate_richness(atlas1006)
+head(alpha_todas)
+```
+
+**Pregunta 3.1a — ANTES de hacer la figura:**
+
+> **De los índices disponibles, ¿cuál usarías para comparar grupos de IMC y por qué?
+> Considera: ¿qué captura cada índice? ¿Cuál es más robusto a la rareza de este dataset?**
+
+```
+# TU JUSTIFICACIÓN (escríbela ANTES de correr el siguiente chunk):
+
+
+```
+
+```{r alpha-figura}
+# Ahora genera la figura con el índice que justificaste.
+# La figura debe incluir: el índice elegido, agrupado por bmi_group,
+# con boxplot + puntos, y un título informativo.
+# TU CÓDIGO AQUÍ:
+
+
+```
+
+**Pregunta 3.1b — DESPUÉS de ver la figura:**
+
+> **¿Observas diferencias en diversidad alfa entre grupos de IMC?
+> ¿Eran las diferencias que esperabas ANTES de hacer el análisis?
+> Si hay o no diferencias, ¿qué factor biológico podría explicarlo?**
+
+```
+# TU INTERPRETACIÓN:
+
+
+```
+
+## 3.2 Diversidad beta: elige tu distancia
+
+**Pregunta 3.2a — ANTES de escribir código:**
+
+> **Tienes dos opciones de distancia: Bray-Curtis o Jaccard (binario).
+> ¿Cuál elegirías para este dataset y por qué? Considera la naturaleza de los datos
+> (¿qué captura cada métrica?, ¿hay muchos ceros?, ¿importa la abundancia relativa?).**
+
+```
+# TU JUSTIFICACIÓN:
+
+
+```
+
+```{r beta-transformacion}
+# Para diversidad beta siempre transformamos primero.
+# Transforma el objeto a abundancias relativas:
+ps_comp <- microbiome::transform(atlas1006, "compositional")
+```
+
+```{r beta-ordination}
+# Genera una ordenación PCoA con la distancia que justificaste.
+# Colorea por bmi_group.
+# TU CÓDIGO AQUÍ:
+
+
+```
+
+**Pregunta 3.2b:**
+
+> **¿Observas separación entre grupos de IMC en el espacio de ordenación?
+> ¿Qué porcentaje de varianza explican los primeros dos ejes?
+> ¿Es ese porcentaje suficiente para confiar en la visualización?**
+
+```
+# TU INTERPRETACIÓN:
+
+
+```
+
+## 3.3 La pregunta difícil: un análisis que tú decidas
+
+```{r analisis-libre}
+# El dataset atlas1006 tiene múltiples variables: age_group, sex, nationality, time, bmi_group.
+# Elige UNA pregunta biológica que te parezca interesante y realiza el análisis.
+#
+# Tu análisis debe incluir:
+#   - Una pregunta clara ("¿Difiere la composición del microbioma entre X e Y?")
+#   - Al menos una figura
+#   - Decisiones metodológicas justificadas
+#
+# TU CÓDIGO AQUÍ:
+
+
+```
+
+**Pregunta 3.3:**
+
+> **Describe en 3-5 oraciones: ¿qué pregunta hiciste, qué encontraste y
+> qué limitación importante tiene tu análisis?**
+
+```
+# TU RESPUESTA:
+
+
+```
+
+---
+
+# PARTE 4 — Interpretación biológica y reflexión (15 min)
+
+*Esta parte no requiere código. Se evalúa profundidad de pensamiento.*
+
+## 4.1 Composición del microbioma en atlas1006
+
+```{r composicion-resumen}
+# Ejecuta este código y observa los resultados antes de responder.
+ps_rel <- microbiome::transform(atlas1006, "compositional")
+top_taxa <- names(sort(taxa_sums(ps_rel), decreasing = TRUE)[1:10])
+
+tax_table(atlas1006)[top_taxa, ]
+```
+
+**Pregunta 4.1:**
+
+> **Los 10 taxa más abundantes en promedio en esta población occidental, ¿a qué filos pertenecen?
+> ¿Qué patrón general observas? ¿Es consistente con lo que se sabe de la literatura
+> sobre microbioma intestinal en adultos sanos occidentales?
+> (Responde con tu conocimiento previo del curso, no buscando en Google.)**
+
+```
+# TU RESPUESTA:
+
+
+```
+
+## 4.2 Reflexión metodológica
+
+**Pregunta 4.2 — Reflexión integradora:**
+
+> Imagina que un colega te pregunta: *"¿Encontraste diferencias en el microbioma
+> entre personas con distinto IMC?"*
+>
+> Escribe un párrafo de respuesta (5-8 oraciones) que:
+> - Mencione qué encontraste en tus análisis de alfa y beta diversidad
+> - Reconozca al menos DOS limitaciones del diseño o del análisis que impiden
+>   establecer causalidad
+> - Proponga UN análisis adicional que fortalecería las conclusiones
+
+```
+# TU PÁRRAFO:
+
+
+```
+
+## 4.3 Sobre el uso de IA en bioinformática
+
+**Pregunta 4.3 — Reflexión honesta (sin respuesta incorrecta):**
+
+> **En esta actividad, ¿en qué momentos sentiste la mayor tentación de usar IA?
+> ¿Por qué crees que esos momentos son precisamente los más importantes
+> para desarrollar como científico/a?
+> ¿Qué perdería tu formación si delegaras esas decisiones a una IA?**
+
+```
+# TU REFLEXIÓN (mínimo 4 oraciones):
+
+
+```
+
+---
+
+# Checklist final antes de hacer knit
+
+Antes de entregar, verifica:
+
+- [ ] Todos los chunks tienen código (no hay `# TU CÓDIGO AQUÍ` sin resolver)
+- [ ] Todas las preguntas tienen respuesta escrita
+- [ ] La pregunta 3.3 tiene una pregunta biológica original tuya
+- [ ] El documento hace knit sin errores (botón Knit → HTML)
+- [ ] El HTML generado está subido al repositorio de GitHub
+
+```{r session-info, echo=FALSE}
+sessionInfo()
+```
