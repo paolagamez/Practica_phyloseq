@@ -191,16 +191,15 @@ head(alpha_div)
 > afectaría al índice de Chao1? Explica la diferencia.**
 
 ```
-Los indices de diversidad alfa se calculan con conteos crudos, si lo hacemos con abundancias relativas perdemos información sobre el esfuerzo de secuenciación y los indices ya no son utiles. No afecta igual a shannon que a Chao1, est eultimo s ebasa en el conteo de singletons
-
+Los indices de diversidad alfa se calculan con conteos crudos, si lo hacemos con abundancias relativas perdemos información sobre el esfuerzo de secuenciación y los indices ya no son utiles. No afecta igual a shannon que a Chao1, est eultimo se basa en el conteo de singletons y doubletons, si pasamos a abundancia relativas estos numeros enteros se pierden.
 
 ```
 
 ```{r error-2-corregido}
 # Escribe la versión correcta (diversidad alfa con el objeto apropiado):
 # TU CÓDIGO AQUÍ:
-
-
+alpha_div <- estimate_richness(atlas1006, measures = c("Chao1", "Shannon"))
+head(alpha_div)
 ```
 
 ## 2.3 Error en la visualización de composición
